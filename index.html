@@ -1,0 +1,285 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A dynamic, interactive 3D fountain</title>
+
+<base target="_self">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Interactive 3D Fountain</title><script src="https://cdn.jsdelivr.net/npm/p5@1.8.0/lib/p5.js"></script><style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+        }
+        #canvas-container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            position: relative;
+        }
+    </style>
+
+    
+    
+    
+    
+
+
+    </head><body><div id="canvas-container"></div>
+
+    <script>
+        const fountain = (p) => {
+            let particles = [];
+            let fountainBase;
+            let maxParticles = 2000;
+            let gravity = 0.1;
+            let viscosity = 0.98;
+            let pressure = 0.5;
+            let sprayAngle = 0.3;
+            let lastMousePos = { x: 0, y: 0 };
+            let rippleEffect = [];
+            let bgGraphics;
+            let colorPalette = [
+                p.color(100, 200, 255, 150),
+                p.color(120, 220, 255, 180),
+                p.color(140, 240, 255, 200),
+                p.color(160, 240, 255, 220)
+            ];
+
+            p.setup = () => {
+                let canvas = p.createCanvas(p.min(p.windowWidth, 1200), p.min(p.windowHeight, 800));
+                canvas.parent('canvas-container');
+                p.colorMode(p.HSB, 360, 100, 100, 1);
+                
+                fountainBase = {
+                    x: p.width/2,
+                    y: p.height - 50,
+                    width: 200,
+                    height: 30
+                };
+                
+                bgGraphics = p.createGraphics(p.width, p.height);
+                drawBackground();
+            };
+
+            function drawBackground() {
+                bgGraphics.background(20, 25, 40);
+                
+                // Create subtle gradient
+                for (let y = 0; y < bgGraphics.height; y++) {
+                    let inter = p.map(y, 0, bgGraphics.height, 0, 1);
+                    let c = p.lerpColor(p.color(10, 15, 30), p.color(30, 35, 60), inter);
+                    bgGraphics.stroke(c);
+                    bgGraphics.line(0, y, bgGraphics.width, y);
+                }
+                
+                // Add faint stars
+                for (let i = 0; i < 100; i++) {
+                    let x = p.random(bgGraphics.width);
+                    let y = p.random(bgGraphics.height * 0.6);
+                    let size = p.random(0.5, 1.5);
+                    let alpha = p.random(50, 150);
+                    bgGraphics.fill(255, alpha);
+                    bgGraphics.noStroke();
+                    bgGraphics.ellipse(x, y, size, size);
+                }
+            }
+
+            p.draw = () => {
+                // Draw background
+                p.image(bgGraphics, 0, 0);
+                
+                // Update parameters based on mouse
+                updateParameters();
+                
+                // Add new particles
+                if (particles.length < maxParticles) {
+                    for (let i = 0; i < 5; i++) {
+                        addParticle();
+                    }
+                }
+                
+                // Update and display particles
+                for (let i = particles.length - 1; i >= 0; i--) {
+                    let particle = particles[i];
+                    
+                    // Apply physics
+                    particle.vel.y += gravity;
+                    particle.vel.mult(viscosity);
+                    particle.pos.add(particle.vel);
+                    
+                    // Check collisions with fountain base
+                    if (particle.pos.y > fountainBase.y - fountainBase.height/2 && 
+                        particle.pos.x > fountainBase.x - fountainBase.width/2 && 
+                        particle.pos.x < fountainBase.x + fountainBase.width/2) {
+                        
+                        // Create splash effect
+                        if (p.random() > 0.7) {
+                            createSplash(particle.pos.x, fountainBase.y - fountainBase.height/2);
+                        }
+                        
+                        // Remove particle
+                        particles.splice(i, 1);
+                        continue;
+                    }
+                    
+                    // Check if particle is out of bounds
+                    if (particle.pos.y > p.height || particle.pos.x < 0 || particle.pos.x > p.width) {
+                        particles.splice(i, 1);
+                        continue;
+                    }
+                    
+                    // Draw particle
+                    drawParticle(particle);
+                }
+                
+                // Update and display ripples
+                for (let i = rippleEffect.length - 1; i >= 0; i--) {
+                    rippleEffect[i].radius += 1;
+                    rippleEffect[i].alpha -= 2;
+                    
+                    if (rippleEffect[i].alpha <= 0) {
+                        rippleEffect.splice(i, 1);
+                    } else {
+                        p.noFill();
+                        p.stroke(150, 200, 255, rippleEffect[i].alpha);
+                        p.strokeWeight(1);
+                        p.ellipse(rippleEffect[i].x, rippleEffect[i].y, rippleEffect[i].radius * 2);
+                    }
+                }
+                
+                // Draw fountain base
+                drawFountainBase();
+                
+                // Show subtle interaction hint
+                if (p.frameCount % 120 < 60) {
+                    p.fill(255, 100);
+                    p.noStroke();
+                    p.textSize(14);
+                    p.textAlign(p.CENTER);
+                    p.text("move mouse to interact", p.width/2, 30);
+                }
+            };
+
+            function updateParameters() {
+                // Map mouse position to parameters
+                let mouseDist = p.dist(p.mouseX, p.mouseY, fountainBase.x, fountainBase.y);
+                
+                // Pressure (height of fountain) - controlled by vertical mouse position
+                pressure = p.map(p.mouseY, 0, p.height, 1.5, 0.2, true);
+                
+                // Viscosity (thickness of flow) - controlled by horizontal mouse position
+                viscosity = p.map(p.mouseX, 0, p.width, 0.92, 0.99, true);
+                
+                // Spray angle - controlled by mouse movement speed
+                let mouseSpeed = p.dist(p.mouseX, p.mouseY, lastMousePos.x, lastMousePos.y);
+                sprayAngle = p.map(mouseSpeed, 0, 20, 0.1, 0.5, true);
+                lastMousePos = { x: p.mouseX, y: p.mouseY };
+            }
+
+            function addParticle() {
+                let angleVariation = (p.random(-1, 1) * sprayAngle);
+                let force = p.map(pressure, 0.2, 1.5, 5, 20);
+                
+                let particle = {
+                    pos: p.createVector(fountainBase.x + p.random(-10, 10), fountainBase.y - fountainBase.height/2),
+                    vel: p.createVector(angleVariation, -force * p.random(0.8, 1.2)),
+                    size: p.random(3, 8),
+                    color: colorPalette[p.floor(p.random(colorPalette.length))],
+                    life: p.random(100, 200)
+                };
+                
+                particles.push(particle);
+            }
+
+            function drawParticle(particle) {
+                p.noStroke();
+                let alpha = p.map(particle.life, 0, 200, 0, 255);
+                particle.color.setAlpha(alpha);
+                p.fill(particle.color);
+                
+                // Draw particle with slight glow effect
+                p.ellipse(particle.pos.x, particle.pos.y, particle.size, particle.size);
+                
+                // Add highlight
+                p.fill(255, 50);
+                p.ellipse(particle.pos.x - particle.size/4, particle.pos.y - particle.size/4, particle.size/2, particle.size/2);
+                
+                particle.life -= 1;
+            }
+
+            function drawFountainBase() {
+                // Base
+                p.fill(60, 60, 70);
+                p.noStroke();
+                p.rectMode(p.CENTER);
+                p.rect(fountainBase.x, fountainBase.y, fountainBase.width, fountainBase.height, 5);
+                
+                // Inner basin
+                p.fill(50, 50, 60);
+                p.rect(fountainBase.x, fountainBase.y - 5, fountainBase.width * 0.9, fountainBase.height * 0.8, 5);
+                
+                // Water surface
+                p.fill(180, 50, 80, 100);
+                p.rect(fountainBase.x, fountainBase.y - 10, fountainBase.width * 0.85, fountainBase.height * 0.7, 5);
+                
+                // Rim highlight
+                p.noFill();
+                p.stroke(100, 30);
+                p.strokeWeight(1);
+                p.rect(fountainBase.x, fountainBase.y, fountainBase.width, fountainBase.height, 5);
+            }
+
+            function createSplash(x, y) {
+                // Create ripple effect
+                rippleEffect.push({
+                    x: x,
+                    y: y,
+                    radius: 5,
+                    alpha: 150
+                });
+                
+                // Create secondary particles
+                for (let i = 0; i < 5; i++) {
+                    if (particles.length < maxParticles) {
+                        let particle = {
+                            pos: p.createVector(x + p.random(-10, 10), y + p.random(-5, 5)),
+                            vel: p.createVector(p.random(-2, 2), p.random(-3, 0)),
+                            size: p.random(2, 6),
+                            color: colorPalette[p.floor(p.random(colorPalette.length))],
+                            life: p.random(50, 100)
+                        };
+                        particles.push(particle);
+                    }
+                }
+            }
+
+            p.mousePressed = () => {
+                // Create big splash when clicking near fountain
+                if (p.dist(p.mouseX, p.mouseY, fountainBase.x, fountainBase.y) < 150) {
+                    for (let i = 0; i < 20; i++) {
+                        createSplash(p.mouseX, p.mouseY);
+                    }
+                }
+            };
+
+            p.windowResized = () => {
+                p.resizeCanvas(p.min(p.windowWidth, 1200), p.min(p.windowHeight, 800));
+                drawBackground();
+                
+                // Update fountain position
+                fountainBase.x = p.width/2;
+                fountainBase.y = p.height - 50;
+            };
+        };
+
+        new p5(fountain);
+    </script>
+
+              
+          
+                
+          
+              
+</body></html>
